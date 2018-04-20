@@ -19,7 +19,13 @@ def itk_to_vtk(itkImage):
     spacing = itkImage.GetSpacing()
     spacing[2] *= resample_factor
     array =array[::resample_factor, :, :]
-    dims = (array.shape[1], array.shape[2], array.shape[0])    
+    dims = (array.shape[1], array.shape[2], array.shape[0])
+
+
+
+    downsampled_image = itk.GetImageFromArray(array)
+    print(downsampled_image)
+    
     vtk_array = numpy_support.numpy_to_vtk(num_array=array.ravel(), deep=True, array_type=vtk.VTK_FLOAT)
     
 
