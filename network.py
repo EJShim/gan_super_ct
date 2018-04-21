@@ -84,55 +84,14 @@ def build_discriminator(x_data, x_generated, keep_prob):
 
     gap = tf.layers.average_pooling2d(inputs=conv6, pool_size=28, strides=1)
 
+    fc = tf.layers.conv2d(inputs=gap, filters=1, kernel_size=1)
 
-    print(gap.shape)
-    exit()
 
-    # Fully Connected Layer 1 (input_height * input_width (img_size) -> 200 (h2_size)) , dropout
-    w1 = tf.Variable(tf.truncated_normal([img_size, h2_size], stddev=0.1), name="d_w1", dtype=tf.float32)
-    b1 = tf.Variable(tf.zeros([h2_size]), name="d_b1", dtype=tf.float32)
-    h1 = tf.nn.dropout(tf.nn.relu(tf.matmul(x_in, w1) + b1), keep_prob)
+    #Real = y_data, #Fake = y_generated
+    y_data, y_generated = tf.split(fc, num_or_size_splits=2, axis=0)    
 
-    # Fully Connected Layer 2 (200 (h1_size) -> 150 (h1_size)) , dropout
-    w2 = tf.Variable(tf.truncated_normal([h2_size, h1_size], stddev=0.1), name="d_w2", dtype=tf.float32)
-    b2 = tf.Variable(tf.zeros([h1_size]), name="d_b2", dtype=tf.float32)
-    h2 = tf.nn.dropout(tf.nn.relu(tf.matmul(h1, w2) + b2), keep_prob)
+    return y_data, y_generated
 
-    # Fully Connected Layer 3 (150 (h1_size) -> 1)
-    w3 = tf.Variable(tf.truncated_normal([h1_size, 1], stddev=0.1), name="d_w3", dtype=tf.float32)
-    b3 = tf.Variable(tf.zeros([1]), name="d_b3", dtype=tf.float32)
-    h3 = tf.matmul(h2, w3) + b3
-
-    # batch_size 만큼 잘라 각각 y_data, y_generated 로
-    # ex)
-    #   이미지 60000개, 배치 사이즈 256, 이미지 사이즈 28 * 28 이라면
-    #   h3 shape : (257, 1)
-    #   y_data shape : (256, 1)
-    #   y_generated shape : (1, 1) 
-    y_data = tf.nn.sigmoid(tf.slice(h3, [0, 0], [batch_size, -1], name=None))
-    y_generated = tf.nn.sigmoid(tf.slice(h3, [batch_size, 0], [-1, -1], name=None))
-
-    # discriminator 변수 저장
-    d_params = [w1, b1, w2, b2, w3, b3]
-
-    return y_data, y_generated, d_params
-
-# 결과 저장 (이미지)
-def show_result(batch_res, fname, grid_size=(8, 8), grid_pad=5):
-    batch_res = 0.5 * batch_res.reshape((batch_res.shape[0], img_height, img_width)) + 0.5
-    img_h, img_w = batch_res.shape[1], batch_res.shape[2]
-    grid_h = img_h * grid_size[0] + grid_pad * (grid_size[0] - 1)
-    grid_w = img_w * grid_size[1] + grid_pad * (grid_size[1] - 1)
-    img_grid = np.zeros((grid_h, grid_w), dtype=np.uint8)
-    for i, res in enumerate(batch_res):
-        if i >= grid_size[0] * grid_size[1]:
-            break
-        img = (res) * 255.
-        img = img.astype(np.uint8)
-        row = (i // grid_size[0]) * (img_h + grid_pad)
-        col = (i % grid_size[1]) * (img_w + grid_pad)
-        img_grid[row:row + img_h, col:col + img_w] = img
-    imsave(fname, img_grid)
 
 
 def train():
@@ -150,7 +109,6 @@ def train():
     # 실제이미지, generater 가 생성한 이미지, dropout keep_prob 를 넣고 discriminator(경찰) 이 감별
     y_data, y_generated = build_discriminator(x_data, x_generated, keep_prob)
 
-    exit()
     # loss 함수 ( D 와 G 를 따로 ) *
     d_loss = - (tf.log(y_data) + tf.log(1 - y_generated))
     g_loss = - tf.log(y_generated)
@@ -159,24 +117,15 @@ def train():
     optimizer = tf.train.AdamOptimizer(0.0001)
 
     # discriminator 와 generator 의 변수로 각각의 loss 함수를 최소화시키도록 학습
-    d_trainer = optimizer.minimize(d_loss, var_list=d_params)
-    g_trainer = optimizer.minimize(g_loss, var_list=g_params)
-
-    init = tf.global_variables_initializer()
-
-    saver = tf.train.Saver()
+    d_trainer = optimizer.minimize(d_loss)
+    g_trainer = optimizer.minimize(g_loss)
 
     sess = tf.Session()
+    sess.run(tf.global_variables_initializer())
 
-    sess.run(init)
+    print("initialization complete")
 
-    if to_restore:
-        chkpt_fname = tf.train.latest_checkpoint(output_path)
-        saver.restore(sess, chkpt_fname)
-    else:
-        if os.path.exists(output_path):
-            shutil.rmtree(output_path)
-        os.mkdir(output_path)
+    exit()
 
     z_sample_val = np.random.normal(0, 1, size=(batch_size, z_size)).astype(np.float32)
 
@@ -210,20 +159,6 @@ def train():
         sess.run(tf.assign(global_step, i + 1))
         saver.save(sess, os.path.join(output_path, "model"), global_step=global_step)
 
-# 학습 완료 후 테스트 (이미지로 저장)
-def test():
-    z_prior = tf.placeholder(tf.float32, [batch_size, z_size], name="z_prior")
-    x_generated, _ = build_generator(z_prior)
-    chkpt_fname = tf.train.latest_checkpoint(output_path)
-
-    init = tf.global_variables_initializer()
-    sess = tf.Session()
-    saver = tf.train.Saver()
-    sess.run(init)
-    saver.restore(sess, chkpt_fname)
-    z_test_value = np.random.normal(0, 1, size=(batch_size, z_size)).astype(np.float32)
-    x_gen_val = sess.run(x_generated, feed_dict={z_prior: z_test_value})
-    show_result(x_gen_val, os.path.join(output_path, "test_result.jpg"))
 
 
 if __name__ == '__main__':
